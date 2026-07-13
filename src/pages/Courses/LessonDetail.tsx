@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 export const LessonDetail: React.FC = () => {
-  const { courseId } = useParams<{ courseId: string }>();
+  const { courseId, lessonIndex } = useParams<{ courseId: string; lessonIndex: string }>();
   const navigate = useNavigate();
 
   // State quản lý dữ liệu khóa học kiểu Course
@@ -16,8 +16,8 @@ export const LessonDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State quản lý bài học hiện tại đang chọn
-  const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
+  // Chỉ số bài học hiện tại lấy từ URL param :lessonIndex
+  const currentLessonIndex = parseInt(lessonIndex || '0', 10);
 
   // State quản lý chế độ Dark Mode
   const [darkMode, setDarkMode] = useState(() => {
@@ -74,10 +74,10 @@ export const LessonDetail: React.FC = () => {
           localStorage.getItem(`lessons_status_${courseId}`) || '{}'
         );
 
-        // Tự động chuyển bài học đầu tiên (active lúc khởi đầu) sang 'in-progress' nếu nó là 'not-started'
-        const firstLessonId = `${data.id}_0`;
-        if (totalLessons > 0 && (!savedLessonsStatus[firstLessonId] || savedLessonsStatus[firstLessonId] === 'not-started')) {
-          savedLessonsStatus[firstLessonId] = 'in-progress';
+        // Tự động chuyển bài học hiện tại (từ URL) sang 'in-progress' nếu nó là 'not-started'
+        const activeLessonId = `${data.id}_${currentLessonIndex}`;
+        if (totalLessons > 0 && currentLessonIndex < totalLessons && (!savedLessonsStatus[activeLessonId] || savedLessonsStatus[activeLessonId] === 'not-started')) {
+          savedLessonsStatus[activeLessonId] = 'in-progress';
           localStorage.setItem(`lessons_status_${courseId}`, JSON.stringify(savedLessonsStatus));
         }
 
@@ -98,7 +98,7 @@ export const LessonDetail: React.FC = () => {
           };
         });
 
-        // Tính toán tiến trình % (chỉ dựa vào số bài học ở trạng thái 'completed')
+        // Tính toán tiến trình %
         const completedCount = lessons.filter(l => l.status === 'completed').length;
         const progress = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
         localStorage.setItem(`course_progress_${courseId}`, String(progress));
@@ -130,36 +130,14 @@ export const LessonDetail: React.FC = () => {
     };
 
     fetchCourseDetail();
-  }, [courseId]);
+  }, [courseId, currentLessonIndex]);
 
-  // Xử lý chuyển bài học và tự động chuyển đổi trạng thái sang 'in-progress' nếu cần
+  // Xử lý chuyển bài học thông qua điều hướng URL
   const handleSelectLesson = (index: number) => {
     if (!course || !courseId) return;
-
-    const selectedLesson = course.lessons[index];
-    const savedLessonsStatus = JSON.parse(
-      localStorage.getItem(`lessons_status_${courseId}`) || '{}'
-    );
-
-    // Nếu bài học mới chọn đang ở trạng thái 'not-started', chuyển thành 'in-progress'
-    if (selectedLesson.status === 'not-started') {
-      savedLessonsStatus[selectedLesson.id] = 'in-progress';
-      localStorage.setItem(`lessons_status_${courseId}`, JSON.stringify(savedLessonsStatus));
-
-      const updatedLessons = course.lessons.map((l, idx) => {
-        if (idx === index) {
-          return { ...l, status: 'in-progress' as const };
-        }
-        return l;
-      });
-
-      setCourse({
-        ...course,
-        lessons: updatedLessons
-      });
-    }
-
-    setCurrentLessonIndex(index);
+    
+    // Điều hướng URL sang bài học con mới -> useEffect sẽ tự động re-fetch và cập nhật 'in-progress'
+    navigate(`/courses/${courseId}/lessons/${index}`);
   };
 
   // Xử lý khi nhấn nút Đánh dấu hoàn thành (Mark as Completed)
@@ -213,17 +191,17 @@ export const LessonDetail: React.FC = () => {
     );
   }
 
-  if (error || !course) {
+  if (error || !course || currentLessonIndex >= course.totalLessons) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-sm">
           <div className="text-rose-500 text-lg font-bold">Lỗi tải dữ liệu</div>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{error || 'Không tìm thấy thông tin khóa học.'}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{error || 'Không tìm thấy thông tin bài học.'}</p>
           <button 
-            onClick={() => navigate('/courses')}
+            onClick={() => navigate(courseId ? `/courses/${courseId}` : '/courses')}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all cursor-pointer"
           >
-            Quay lại danh sách khóa học
+            Quay lại trang chi tiết khóa học
           </button>
         </div>
       </div>
@@ -360,15 +338,15 @@ export const LessonDetail: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-bold text-slate-850 dark:text-slate-200 truncate">Học viên EduPortal</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-450 truncate">Đang trong bài học</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-455 truncate">Đang trong bài học</p>
             </div>
           </div>
           <button
-            onClick={() => navigate('/courses')}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-855 transition-all cursor-pointer"
+            onClick={() => navigate(`/courses/${courseId}`)}
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-855 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Quay lại Dashboard</span>
+            <span>Quay lại khóa học</span>
           </button>
         </div>
       </aside>
@@ -379,9 +357,9 @@ export const LessonDetail: React.FC = () => {
         {/* TOP BAR / BREADCRUMB */}
         <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 shrink-0 transition-colors duration-300">
           <div className="flex items-center space-x-4 min-w-0">
-            {/* Back button top bar (Touch target >= 44px) */}
+            {/* Back button top bar (Touch target >= 44px) - Quay về trang chi tiết khóa học */}
             <button 
-              onClick={() => navigate('/courses')}
+              onClick={() => navigate(`/courses/${courseId}`)}
               className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 cursor-pointer"
               aria-label="Back"
             >
@@ -414,7 +392,7 @@ export const LessonDetail: React.FC = () => {
                 <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-lg text-xs font-bold">
                   {course.kindOfCourse} • Level {course.level}
                 </span>
-                <h2 className="text-xl font-extrabold text-slate-850 dark:text-white">{course.title}</h2>
+                <h2 className="text-xl font-extrabold text-slate-855 dark:text-white">{course.title}</h2>
               </div>
               
               <div className="flex items-center gap-6 text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -463,9 +441,9 @@ export const LessonDetail: React.FC = () => {
             {/* Action buttons (Mark as completed + Back to course) */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-100 dark:border-slate-800">
               
-              {/* Back to course button */}
+              {/* Back to course button - Quay về trang chi tiết khóa học */}
               <button
-                onClick={() => navigate('/courses')}
+                onClick={() => navigate(`/courses/${courseId}`)}
                 className="w-full sm:w-auto px-6 h-12 flex items-center justify-center space-x-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-850 hover:text-slate-800 transition-all cursor-pointer order-2 sm:order-1"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -475,7 +453,7 @@ export const LessonDetail: React.FC = () => {
               {/* Mark as Completed / Completed status button */}
               <div className="w-full sm:w-auto order-1 sm:order-2">
                 {isCurrentLessonCompleted ? (
-                  <div className="w-full sm:w-auto px-6 h-12 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5">
+                  <div className="w-full sm:w-auto px-6 h-12 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-450 rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5">
                     <Check className="w-5 h-5 text-emerald-500" />
                     <span>Bài học đã hoàn thành</span>
                   </div>
@@ -506,10 +484,10 @@ export const LessonDetail: React.FC = () => {
                 <p className="text-emerald-100 font-light text-xs sm:text-sm">Hãy tự hào về nỗ lực học tập không ngừng của mình ngày hôm nay.</p>
               </div>
               <button 
-                onClick={() => navigate('/courses')}
+                onClick={() => navigate(`/courses/${courseId}`)}
                 className="w-full sm:w-auto px-5 py-2.5 bg-white text-emerald-700 hover:bg-slate-55 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
               >
-                Nhận chứng chỉ Dashboard
+                Nhận chứng chỉ khóa học
               </button>
             </div>
           )}
@@ -519,11 +497,11 @@ export const LessonDetail: React.FC = () => {
         {/* Footer for Mobile only */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:hidden flex justify-center transition-colors duration-300">
           <button
-            onClick={() => navigate('/courses')}
-            className="flex items-center space-x-2 px-5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+            onClick={() => navigate(`/courses/${courseId}`)}
+            className="flex items-center space-x-2 px-5 py-2 border border-slate-200 dark:border-slate-805 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Quay lại Dashboard</span>
+            <span>Quay lại khóa học</span>
           </button>
         </div>
 
