@@ -138,14 +138,9 @@ export const Login: React.FC = () => {
 
               {/* Password Input Field */}
               <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Mật khẩu
-                  </label>
-                  <a href="#forgot" className="text-xs font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 transition-colors">
-                    Quên mật khẩu?
-                  </a>
-                </div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Mật khẩu
+                </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-600 transition-colors duration-200">
                     <Lock className="w-5 h-5" />
@@ -175,7 +170,7 @@ export const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* Remember Me Checkbox */}
+            {/* Remember Me Checkbox & Forgot Password */}
             <div className="flex items-center justify-between">
               <label className="flex items-center space-x-2.5 cursor-pointer group">
                 <input
@@ -186,6 +181,9 @@ export const Login: React.FC = () => {
                   Ghi nhớ đăng nhập
                 </span>
               </label>
+              <a href="#forgot" className="text-xs font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 transition-colors">
+                Quên mật khẩu?
+              </a>
             </div>
 
             {/* Submit Button */}
