@@ -49,12 +49,14 @@ export const CoursesList: React.FC = () => {
   // State quản lý Sidebar trên mobile
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Thực hiện tìm kiếm và lọc cấp độ Level hoàn chỉnh trên client
-  const filteredCourses = allCourses.filter(course => {
-    const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesLevel = selectedLevel === 'All' || course.level === selectedLevel;
-    return matchesSearch && matchesLevel;
-  });
+  // Thực hiện tìm kiếm, lọc cấp độ Level và sắp xếp theo % tiến trình học giảm dần
+  const filteredCourses = allCourses
+    .filter(course => {
+      const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesLevel = selectedLevel === 'All' || course.level === selectedLevel;
+      return matchesSearch && matchesLevel;
+    })
+    .sort((a, b) => b.progress - a.progress);
 
   // Reset về trang 1 mỗi khi thay đổi từ khóa tìm kiếm hoặc độ khó
   useEffect(() => {
