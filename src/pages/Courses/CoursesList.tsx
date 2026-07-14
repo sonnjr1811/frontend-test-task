@@ -7,6 +7,8 @@ import { Header } from '../../components/Header';
 import { CourseCard } from '../../components/CourseCard';
 import { Modal } from '../../components/Custom/Modal';
 import type { Course } from '../../types/course';
+import { jsPDF } from 'jspdf';
+import { toPng } from 'html-to-image';
 import { 
   BookOpen, Search, LogOut, 
   GraduationCap, Award, Clock,
@@ -79,6 +81,86 @@ export const CoursesList: React.FC = () => {
 
   const levels = ['All', 'S', 'Pres', 'TC', 'MTC'];
 
+  const [downloadingCert, setDownloadingCert] = useState(false);
+
+  const handleDownloadCertificate = async () => {
+    if (!selectedCertCourse) return;
+    
+    const element = document.getElementById('certificate-download-area');
+    if (!element) return;
+
+    setDownloadingCert(true);
+    try {
+      // Chờ 200ms để đảm bảo giao diện được render đầy đủ ổn định
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // html-to-image chuyển đổi DOM thành ảnh SVG rồi vẽ lên canvas,
+      // nhờ đó hỗ trợ hoàn toàn các thuộc tính CSS hiện đại bao gồm cả hệ màu oklab/oklch của Tailwind v4.
+      const imgData = await toPng(element, {
+        pixelRatio: 2.5, // Tăng mật độ pixel lên 2.5 lần để bản in PDF cực kỳ rõ nét
+        backgroundColor: darkMode ? '#0f172a' : '#fffbeb', // Màu nền theo theme
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+        }
+      });
+      
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      // Để lấy chính xác tỷ lệ, ta tải ảnh tạm thời và lấy chiều rộng/chiều cao
+      const img = new Image();
+      img.src = imgData;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      const canvasWidth = img.width;
+      const canvasHeight = img.height;
+      const ratio = canvasWidth / canvasHeight;
+
+      // Tính toán kích thước ảnh cân đối trong trang A4
+      let imgWidth = pdfWidth - 24; 
+      let imgHeight = imgWidth / ratio;
+
+      if (imgHeight > pdfHeight - 24) {
+        imgHeight = pdfHeight - 24;
+        imgWidth = imgHeight * ratio;
+      }
+
+      const x = (pdfWidth - imgWidth) / 2;
+      const y = (pdfHeight - imgHeight) / 2;
+
+      pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+      
+      // Chuyển tiếng Việt có dấu thành không dấu để đặt tên file PDF an toàn
+      const cleanCourseTitle = selectedCertCourse.title
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '_');
+      const cleanStudentName = userInfo.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .replace(/\s+/g, '_');
+
+      const fileName = `ChungChi_${cleanCourseTitle}_${cleanStudentName}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error('Lỗi khi xuất PDF:', err);
+      alert('Đã xảy ra lỗi trong quá trình tạo PDF. Vui lòng thử lại sau.');
+    } finally {
+      setDownloadingCert(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 font-sans">
       
@@ -86,7 +168,10 @@ export const CoursesList: React.FC = () => {
       <aside className="hidden lg:flex lg:fixed lg:top-0 lg:bottom-0 lg:left-0 lg:w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col justify-between p-6 z-20 transition-colors duration-300">
         <div className="space-y-8">
           {/* Logo */}
-          <div className="flex items-center space-x-3">
+          <div 
+            onClick={() => navigate('/courses')}
+            className="flex items-center space-x-3 cursor-pointer hover:opacity-90 transition-opacity"
+          >
             <div className="p-2.5 bg-indigo-600 rounded-xl shadow-md shadow-indigo-600/20">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
@@ -169,7 +254,13 @@ export const CoursesList: React.FC = () => {
         <div className="space-y-8">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <div className="flex items-center space-x-3">
+            <div 
+              onClick={() => {
+                setIsMobileSidebarOpen(false);
+                navigate('/courses');
+              }}
+              className="flex items-center space-x-3 cursor-pointer hover:opacity-90 transition-opacity"
+            >
               <div className="p-2 bg-indigo-600 rounded-xl">
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
@@ -473,7 +564,10 @@ export const CoursesList: React.FC = () => {
           /* HIỂN THỊ CHỨNG CHỈ CHI TIẾT (CERTIFICATE VIEW) */
           <div className="space-y-6">
             {/* Khung bằng khen đẹp mắt */}
-            <div className="relative p-6 sm:p-10 border-[10px] border-amber-600/35 dark:border-amber-600/45 rounded-3xl bg-amber-50/20 dark:bg-amber-950/10 text-center font-sans space-y-6 overflow-hidden">
+            <div 
+              id="certificate-download-area"
+              className="relative p-6 sm:p-10 border-[10px] border-amber-600/35 dark:border-amber-600/45 rounded-3xl bg-amber-50/20 dark:bg-amber-950/10 text-center font-sans space-y-6 overflow-hidden"
+            >
               {/* Pattern hoa văn chìm ở góc */}
               <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-amber-600/50 m-2 rounded-tl-xl pointer-events-none" />
               <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-amber-600/50 m-2 rounded-tr-xl pointer-events-none" />
@@ -531,12 +625,21 @@ export const CoursesList: React.FC = () => {
                 Quay lại danh sách
               </button>
               <button
-                onClick={() => {
-                  alert("Tính năng in chứng chỉ đang được nâng cấp!");
-                }}
-                className="h-11 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer"
+                onClick={handleDownloadCertificate}
+                disabled={downloadingCert}
+                className="h-11 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
-                Tải chứng chỉ (PDF)
+                {downloadingCert ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Đang tạo PDF...</span>
+                  </>
+                ) : (
+                  <span>Tải chứng chỉ (PDF)</span>
+                )}
               </button>
             </div>
           </div>
