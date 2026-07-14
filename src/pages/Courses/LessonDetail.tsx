@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { Course, Lesson } from '../../types/course';
+import type { Course } from '../../types/course';
+import { fetchCourseById } from '../../services/courseService';
+import { useTheme } from '../../hooks/useTheme';
+import { useProgress } from '../../hooks/useProgress';
+import { Header } from '../../components/Header';
+import { ProgressBar } from '../../components/ProgressBar';
 import { 
   ArrowLeft, CheckCircle2, Circle, Clock, 
-  BookOpen, Sparkles, Sun, Moon,
-  ChevronRight, Check, Award
+  BookOpen, Sparkles, ChevronRight, Check, Award, Sun, Moon
 } from 'lucide-react';
 
 export const LessonDetail: React.FC = () => {
   const { courseId, lessonIndex } = useParams<{ courseId: string; lessonIndex: string }>();
   const navigate = useNavigate();
+  const [darkMode, setDarkMode] = useTheme();
 
   // State quản lý dữ liệu khóa học kiểu Course
   const [course, setCourse] = useState<Course | null>(null);
@@ -18,110 +23,26 @@ export const LessonDetail: React.FC = () => {
 
   // Chỉ số bài học hiện tại lấy từ URL param :lessonIndex
   const currentLessonIndex = parseInt(lessonIndex || '0', 10);
-
-  // State quản lý chế độ Dark Mode
-  const [darkMode, setDarkMode] = useState(() => {
-    return document.documentElement.classList.contains('dark') || 
-      localStorage.getItem('theme') === 'dark';
-  });
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
+  
+  // Sử dụng custom hook progress
+  const { getSavedStatuses, saveLessonStatus } = useProgress(courseId || '');
 
   // Fetch thông tin chi tiết khóa học và map sang cấu trúc Course
   useEffect(() => {
-    const fetchCourseDetail = async () => {
+    const fetchDetail = async () => {
       if (!courseId) return;
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`https://dummyjson.com/recipes/${courseId}`);
-        if (!res.ok) throw new Error('Không thể tải thông tin bài học từ API.');
-        const data = await res.json();
-        
-        // 1. Ánh xạ kindOfCourse từ cuisine
-        let kindOfCourse: Course['kindOfCourse'] = 'VSTEP';
-        const cuisine = data.cuisine || '';
-        if (['Italian', 'French', 'Greek'].includes(cuisine)) {
-          kindOfCourse = 'IELTS';
-        } else if (['Asian', 'Japanese', 'Thai', 'Pakistani', 'Indian'].includes(cuisine)) {
-          kindOfCourse = 'TOEIC';
-        } else if (['Mexican', 'Moroccan', 'American'].includes(cuisine)) {
-          kindOfCourse = '4SKILLS';
+        // Tự động chuyển bài học hiện tại sang 'in-progress' nếu nó là 'not-started'
+        const savedStatuses = getSavedStatuses();
+        const activeLessonId = `${courseId}_${currentLessonIndex}`;
+        if (!savedStatuses[activeLessonId] || savedStatuses[activeLessonId] === 'not-started') {
+          saveLessonStatus(activeLessonId, 'in-progress');
         }
 
-        // 2. Ánh xạ level từ difficulty
-        let level: Course['level'] = 'MTC';
-        if (data.difficulty === 'Easy') {
-          level = 'S';
-        } else if (data.difficulty === 'Medium') {
-          level = 'Pres';
-        } else if (data.difficulty === 'Hard') {
-          level = 'TC';
-        }
-
-        // 3. Đọc map trạng thái chi tiết của từng bài học con từ localStorage
-        const rawInstructions = data.instructions || [];
-        const totalLessons = rawInstructions.length;
-        const savedLessonsStatus = JSON.parse(
-          localStorage.getItem(`lessons_status_${courseId}`) || '{}'
-        );
-
-        // Tự động chuyển bài học hiện tại (từ URL) sang 'in-progress' nếu nó là 'not-started'
-        const activeLessonId = `${data.id}_${currentLessonIndex}`;
-        if (totalLessons > 0 && currentLessonIndex < totalLessons && (!savedLessonsStatus[activeLessonId] || savedLessonsStatus[activeLessonId] === 'not-started')) {
-          savedLessonsStatus[activeLessonId] = 'in-progress';
-          localStorage.setItem(`lessons_status_${courseId}`, JSON.stringify(savedLessonsStatus));
-        }
-
-        const lessons: Lesson[] = rawInstructions.map((inst: string, idx: number): Lesson => {
-          const lessonId = `${data.id}_${idx}`;
-          const status = (savedLessonsStatus[lessonId] || 'not-started') as Lesson['status'];
-          const duration = Math.max(5, Math.round((data.prepTimeMinutes || 30) / totalLessons) + (idx % 3) * 2);
-
-          return {
-            id: lessonId,
-            courseId: String(data.id),
-            title: `Bài học ${idx + 1}: ${inst.split(',')[0]}`,
-            duration,
-            url: `https://example.com/lesson-${idx + 1}`,
-            description: inst,
-            status,
-            order: idx + 1
-          };
-        });
-
-        // Tính toán tiến trình %
-        const completedCount = lessons.filter(l => l.status === 'completed').length;
-        const progress = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
-        localStorage.setItem(`course_progress_${courseId}`, String(progress));
-
-        let status: Course['status'] = 'not-started';
-        if (progress === 100) {
-          status = 'completed';
-        } else if (progress > 0) {
-          status = 'in-progress';
-        }
-
-        setCourse({
-          id: String(data.id),
-          title: `Khóa học: ${data.name}`,
-          description: rawInstructions.join(' '),
-          thumbnail: data.image,
-          level,
-          kindOfCourse,
-          totalLessons,
-          progress,
-          status,
-          lessons
-        });
+        const data = await fetchCourseById(courseId);
+        setCourse(data);
       } catch (err: any) {
         setError(err.message || 'Đã xảy ra lỗi khi gọi API.');
       } finally {
@@ -129,29 +50,24 @@ export const LessonDetail: React.FC = () => {
       }
     };
 
-    fetchCourseDetail();
-  }, [courseId, currentLessonIndex]);
+    fetchDetail();
+  }, [courseId, currentLessonIndex, getSavedStatuses, saveLessonStatus]);
 
   // Xử lý chuyển bài học thông qua điều hướng URL
   const handleSelectLesson = (index: number) => {
     if (!course || !courseId) return;
-    
-    // Điều hướng URL sang bài học con mới -> useEffect sẽ tự động re-fetch và cập nhật 'in-progress'
     navigate(`/courses/${courseId}/lessons/${index}`);
   };
 
-  // Xử lý khi nhấn nút Đánh dấu hoàn thành (Mark as Completed)
+  // Xử lý khi nhấn nút Đánh dấu hoàn thành
   const handleMarkAsCompleted = () => {
     if (!course || !courseId) return;
 
     const currentLesson = course.lessons[currentLessonIndex];
-    const savedLessonsStatus = JSON.parse(
-      localStorage.getItem(`lessons_status_${courseId}`) || '{}'
-    );
+    const activeLessonId = `${course.id}_${currentLessonIndex}`;
     
     if (currentLesson.status !== 'completed') {
-      savedLessonsStatus[currentLesson.id] = 'completed';
-      localStorage.setItem(`lessons_status_${courseId}`, JSON.stringify(savedLessonsStatus));
+      saveLessonStatus(activeLessonId, 'completed');
 
       // Cập nhật trạng thái bài học con trong state cục bộ
       const updatedLessons = course.lessons.map((l, idx) => {
@@ -177,11 +93,14 @@ export const LessonDetail: React.FC = () => {
     }
   };
 
+  // Lấy thông tin user đăng nhập
+  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{"name": "Học viên", "email": "hocvien@example.com"}');
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
         <div className="text-center space-y-4">
-          <svg className="animate-spin h-10 w-10 text-indigo-650 mx-auto" fill="none" viewBox="0 0 24 24">
+          <svg className="animate-spin h-10 w-10 text-indigo-600 mx-auto" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
@@ -196,7 +115,7 @@ export const LessonDetail: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-sm">
           <div className="text-rose-500 text-lg font-bold">Lỗi tải dữ liệu</div>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{error || 'Không tìm thấy thông tin bài học.'}</p>
+          <p className="text-sm text-slate-655 dark:text-slate-400">{error || 'Không tìm thấy thông tin bài học.'}</p>
           <button 
             onClick={() => navigate(courseId ? `/courses/${courseId}` : '/courses')}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all cursor-pointer"
@@ -211,18 +130,14 @@ export const LessonDetail: React.FC = () => {
   const lessons = course.lessons;
   const totalLessons = course.totalLessons;
   const currentLesson = lessons[currentLessonIndex];
-  
-  // Trạng thái hoàn thành của bài học hiện tại đang chọn
   const isCurrentLessonCompleted = currentLesson.status === 'completed';
-
-  // Tính toán tiến trình hiện tại để hiển thị trên UI
   const progressPercentage = course.progress;
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors duration-300 font-sans">
       
-      {/* SIDEBAR: Lesson Playlist (Bên trái trên desktop) */}
-      <aside className="w-full lg:w-80 bg-white dark:bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between shrink-0 transition-colors duration-300">
+      {/* SIDEBAR: Lesson Playlist */}
+      <aside className="w-full lg:w-80 lg:fixed lg:top-0 lg:bottom-0 lg:left-0 bg-white dark:bg-slate-900 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between shrink-0 transition-colors duration-300 z-20">
         
         {/* Top Section */}
         <div>
@@ -232,27 +147,22 @@ export const LessonDetail: React.FC = () => {
               <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <span className="font-bold text-sm text-slate-700 dark:text-slate-200 uppercase tracking-wider">Nội dung khóa học</span>
             </div>
-            {/* Theme toggle (Touch target >= 44px) */}
+            {/* Theme toggle */}
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className="w-11 h-11 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              className="w-11 h-11 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-800 cursor-pointer"
             >
               {darkMode ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-600" />}
             </button>
           </div>
 
           {/* Progress bar tổng thể khóa học */}
-          <div className="p-5 bg-slate-50/50 dark:bg-slate-950/20 border-b border-slate-200 dark:border-slate-800 space-y-2">
-            <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-400">
-              <span>Tiến độ học tập</span>
-              <span>{progressPercentage}% ({lessons.filter(l => l.status === 'completed').length}/{totalLessons})</span>
-            </div>
-            <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 dark:from-indigo-600 dark:to-indigo-500 rounded-full transition-all duration-500"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
+          <div className="p-5 bg-slate-50/50 dark:bg-slate-950/20 border-b border-slate-200 dark:border-slate-800">
+            <ProgressBar 
+              progress={progressPercentage} 
+              label={`Tiến độ học tập (${lessons.filter(l => l.status === 'completed').length}/${totalLessons})`}
+              size="sm"
+            />
           </div>
 
           {/* Playlist list */}
@@ -261,7 +171,6 @@ export const LessonDetail: React.FC = () => {
               const isActive = index === currentLessonIndex;
               const status = lesson.status;
 
-              // Định nghĩa tỷ lệ % và màu sắc cho thanh tiến độ từng lesson
               let lessonProgress = 0;
               let lessonProgressColor = 'bg-slate-200 dark:bg-slate-750';
               if (status === 'in-progress') {
@@ -291,7 +200,7 @@ export const LessonDetail: React.FC = () => {
                         ) : status === 'in-progress' ? (
                           <Clock className={`w-5 h-5 ${isActive ? 'text-white' : 'text-indigo-550'}`} />
                         ) : (
-                          <Circle className="w-5 h-5 text-slate-300 dark:text-slate-700 stroke-[1.5] stroke-dasharray-[2]" />
+                          <Circle className="w-5 h-5 text-slate-300 dark:text-slate-700 stroke-[1.5]" />
                         )}
                       </div>
                       {/* Title */}
@@ -305,7 +214,7 @@ export const LessonDetail: React.FC = () => {
 
                   {/* MINI PROGRESS BAR CHO TỪNG LESSON */}
                   <div className="w-full pl-8 mt-2 space-y-1">
-                    <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1 w-full bg-slate-105 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div 
                         className={`h-full rounded-full transition-all duration-300 ${lessonProgressColor}`}
                         style={{ width: `${lessonProgress}%` }}
@@ -317,7 +226,7 @@ export const LessonDetail: React.FC = () => {
                         : status === 'completed' 
                           ? 'text-emerald-500 dark:text-emerald-400' 
                           : status === 'in-progress' 
-                            ? 'text-indigo-650 dark:text-indigo-400' 
+                            ? 'text-indigo-600 dark:text-indigo-400' 
                             : 'text-slate-400'
                     }`}>
                       {status === 'completed' ? 'Đã học xong' : status === 'in-progress' ? 'Đang học (50%)' : 'Chưa bắt đầu'}
@@ -337,13 +246,13 @@ export const LessonDetail: React.FC = () => {
               C
             </div>
             <div>
-              <p className="text-xs font-bold text-slate-850 dark:text-slate-200 truncate">Học viên EduPortal</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-455 truncate">Đang trong bài học</p>
+              <p className="text-xs font-bold text-slate-855 dark:text-slate-200 truncate">Học viên EduPortal</p>
+              <p className="text-[10px] text-slate-450 dark:text-slate-455 truncate">Đang trong bài học</p>
             </div>
           </div>
           <button
             onClick={() => navigate(`/courses/${courseId}`)}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-855 transition-all cursor-pointer"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Quay lại khóa học</span>
@@ -352,25 +261,15 @@ export const LessonDetail: React.FC = () => {
       </aside>
 
       {/* MAIN SECTION: Lesson details */}
-      <main className="flex-1 flex flex-col min-w-0 transition-colors duration-300">
+      <main className="flex-1 flex flex-col min-w-0 lg:pl-80 transition-colors duration-300">
         
         {/* TOP BAR / BREADCRUMB */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 shrink-0 transition-colors duration-300">
-          <div className="flex items-center space-x-4 min-w-0">
-            {/* Back button top bar (Touch target >= 44px) - Quay về trang chi tiết khóa học */}
-            <button 
-              onClick={() => navigate(`/courses/${courseId}`)}
-              className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 cursor-pointer"
-              aria-label="Back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="truncate">
-              <span className="text-xs font-bold text-indigo-655 dark:text-indigo-400 uppercase tracking-wider">{course.kindOfCourse} Course (Level: {course.level})</span>
-              <h1 className="text-sm sm:text-base font-bold text-slate-855 dark:text-white truncate leading-tight mt-0.5">{course.title}</h1>
-            </div>
-          </div>
-        </header>
+        <Header 
+          title={course.title}
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          userInfo={userInfo}
+        />
 
         {/* LESSON DETAILS CONTENT */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
@@ -387,17 +286,17 @@ export const LessonDetail: React.FC = () => {
             </div>
             
             {/* Short course overview */}
-            <div className="flex flex-col justify-between py-1 space-y-4">
+            <div className="flex flex-col justify-between py-1 space-y-4 flex-1">
               <div className="space-y-2">
-                <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-lg text-xs font-bold">
+                <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold">
                   {course.kindOfCourse} • Level {course.level}
                 </span>
                 <h2 className="text-xl font-extrabold text-slate-855 dark:text-white">{course.title}</h2>
               </div>
               
-              <div className="flex items-center gap-6 text-xs text-slate-500 dark:text-slate-400 font-medium">
+              <div className="flex items-center gap-6 text-xs text-slate-555 dark:text-slate-400 font-medium flex-wrap">
                 <span className="flex items-center space-x-1.5">
-                  <Clock className="w-4 h-4 text-indigo-505" />
+                  <Clock className="w-4 h-4 text-indigo-500" />
                   <span>Thời gian bài học: {currentLesson.duration} phút</span>
                 </span>
                 <span className="flex items-center space-x-1.5">
@@ -415,7 +314,7 @@ export const LessonDetail: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
               <div className="space-y-1">
                 <div className="inline-flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-widest">
-                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  <Sparkles className="w-3.5 h-3.5" />
                   <span>Nội dung bài học</span>
                 </div>
                 <h3 className="text-lg sm:text-2xl font-black text-slate-855 dark:text-white">
@@ -441,10 +340,10 @@ export const LessonDetail: React.FC = () => {
             {/* Action buttons (Mark as completed + Back to course) */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-100 dark:border-slate-800">
               
-              {/* Back to course button - Quay về trang chi tiết khóa học */}
+              {/* Back to course button */}
               <button
                 onClick={() => navigate(`/courses/${courseId}`)}
-                className="w-full sm:w-auto px-6 h-12 flex items-center justify-center space-x-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-850 hover:text-slate-800 transition-all cursor-pointer order-2 sm:order-1"
+                className="w-full sm:w-auto px-6 h-12 flex items-center justify-center space-x-2 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 hover:text-slate-800 transition-all cursor-pointer order-2 sm:order-1"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Quay lại khóa học</span>
@@ -453,14 +352,14 @@ export const LessonDetail: React.FC = () => {
               {/* Mark as Completed / Completed status button */}
               <div className="w-full sm:w-auto order-1 sm:order-2">
                 {isCurrentLessonCompleted ? (
-                  <div className="w-full sm:w-auto px-6 h-12 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-450 rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5">
+                  <div className="w-full sm:w-auto px-6 h-12 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-455 rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5">
                     <Check className="w-5 h-5 text-emerald-500" />
                     <span>Bài học đã hoàn thành</span>
                   </div>
                 ) : (
                   <button
                     onClick={handleMarkAsCompleted}
-                    className="w-full sm:w-auto px-8 h-12 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5 shadow-md shadow-indigo-600/10 hover:shadow-lg hover:shadow-indigo-600/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-98 transition-all cursor-pointer"
+                    className="w-full sm:w-auto px-8 h-12 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold flex items-center justify-center space-x-2.5 shadow-md shadow-indigo-600/10 hover:shadow-lg hover:shadow-indigo-600/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-98 transition-all cursor-pointer"
                   >
                     <CheckCircle2 className="w-5 h-5 text-indigo-200" />
                     <span>Đánh dấu hoàn thành</span>
@@ -484,8 +383,8 @@ export const LessonDetail: React.FC = () => {
                 <p className="text-emerald-100 font-light text-xs sm:text-sm">Hãy tự hào về nỗ lực học tập không ngừng của mình ngày hôm nay.</p>
               </div>
               <button 
-                onClick={() => navigate(`/courses/${courseId}`)}
-                className="w-full sm:w-auto px-5 py-2.5 bg-white text-emerald-700 hover:bg-slate-55 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                onClick={() => navigate('/courses?showAchievements=true')}
+                className="w-full sm:w-auto px-5 py-2.5 bg-white text-emerald-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
               >
                 Nhận chứng chỉ khóa học
               </button>
@@ -498,7 +397,7 @@ export const LessonDetail: React.FC = () => {
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 lg:hidden flex justify-center transition-colors duration-300">
           <button
             onClick={() => navigate(`/courses/${courseId}`)}
-            className="flex items-center space-x-2 px-5 py-2 border border-slate-200 dark:border-slate-805 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
+            className="flex items-center space-x-2 px-5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Quay lại khóa học</span>

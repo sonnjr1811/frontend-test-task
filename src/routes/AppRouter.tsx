@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from '../pages/Auth/Login';
-import { Courses } from '../pages/Courses/Courses';
+import { CoursesList } from '../pages/Courses/CoursesList';
 import { CourseDetail } from '../pages/Courses/CourseDetail.tsx';
 import { LessonDetail } from '../pages/Courses/LessonDetail.tsx';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -14,7 +14,7 @@ export const AppRouter = () => {
 
         {/* Đường dẫn bảo vệ bằng ProtectedRoute */}
         <Route element={<ProtectedRoute />}>
-          <Route path="/courses" element={<Courses />} />
+          <Route path="/courses" element={<CoursesList />} />
           <Route path="/courses/:courseId" element={<CourseDetail />} />
           <Route path="/courses/:courseId/lessons/:lessonIndex" element={<LessonDetail />} />
         </Route>

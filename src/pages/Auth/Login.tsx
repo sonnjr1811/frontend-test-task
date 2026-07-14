@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../hooks/useTheme';
+import { validateEmail, validatePassword } from '../../utils/validate';
 import { Eye, EyeOff, Lock, Mail, GraduationCap, Sparkles, Sun, Moon } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { login, loading, error: authError } = useAuth();
+  const [darkMode, setDarkMode] = useTheme();
 
   // State quản lý giá trị input
   const [email, setEmail] = useState('');
@@ -15,51 +18,6 @@ export const Login: React.FC = () => {
   const [passwordError, setPasswordError] = useState('');
   const [isFormValid, setIsFormValid] = useState(false);
 
-  // State quản lý chế độ Dark Mode cục bộ tại Login
-  const [darkMode, setDarkMode] = useState(() => {
-    return document.documentElement.classList.contains('dark') ||
-      localStorage.getItem('theme') === 'dark';
-  });
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
-
-  // Hàm validate email bằng Regex
-  const validateEmail = (val: string) => {
-    if (!val) {
-      setEmailError('Email không được để trống');
-      return false;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(val)) {
-      setEmailError('Email không đúng định dạng (VD: example@gmail.com)');
-      return false;
-    }
-    setEmailError('');
-    return true;
-  };
-
-  // Hàm validate password
-  const validatePassword = (val: string) => {
-    if (!val) {
-      setPasswordError('Mật khẩu không được để trống');
-      return false;
-    }
-    if (val.length < 6) {
-      setPasswordError('Mật khẩu phải có ít nhất 6 ký tự');
-      return false;
-    }
-    setPasswordError('');
-    return true;
-  };
-
   // Kiểm tra form hợp lệ mỗi khi input thay đổi
   useEffect(() => {
     const isEmailOk = email && !emailError && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -69,13 +27,18 @@ export const Login: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (validateEmail(email) && validatePassword(password)) {
+    const eErr = validateEmail(email);
+    const pErr = validatePassword(password);
+    setEmailError(eErr);
+    setPasswordError(pErr);
+    
+    if (!eErr && !pErr) {
       login(email, password);
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300 font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-955 transition-colors duration-300 font-sans">
       {/* Nút chuyển đổi giao diện Dark/Light Mode ở góc trên bên phải */}
       <button
         onClick={() => setDarkMode(!darkMode)}
@@ -86,7 +49,7 @@ export const Login: React.FC = () => {
       </button>
 
       {/* Cột Trái: Banner thương hiệu & Giới thiệu (Ẩn trên mobile) */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-700 to-blue-800 dark:from-violet-950 dark:via-indigo-950 dark:to-slate-950 p-16 flex-col justify-between">
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-700 to-blue-800 dark:from-violet-955 dark:via-indigo-955 dark:to-slate-955 p-16 flex-col justify-between">
         {/* Lớp phủ họa tiết vòng tròn nghệ thuật phía sau */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-indigo-500/10 blur-3xl -mr-24 -mt-24 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-violet-500/10 blur-3xl -ml-20 -mb-20 pointer-events-none" />
@@ -137,7 +100,7 @@ export const Login: React.FC = () => {
           </div>
 
           {authError && (
-            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 p-4 text-sm text-rose-700 dark:text-rose-400 animate-shake">
+            <div className="rounded-xl bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 p-4 text-sm text-rose-700 dark:text-rose-400">
               <div className="flex items-center space-x-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                 <span>{authError}</span>
@@ -161,7 +124,7 @@ export const Login: React.FC = () => {
                     value={email}
                     onChange={(e) => {
                       setEmail(e.target.value);
-                      validateEmail(e.target.value);
+                      setEmailError(validateEmail(e.target.value));
                     }}
                     className={`block w-full h-12 pl-11 pr-4 rounded-xl border bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-offset-0 transition-all duration-200 text-sm ${emailError
                         ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
@@ -192,7 +155,7 @@ export const Login: React.FC = () => {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      validatePassword(e.target.value);
+                      setPasswordError(validatePassword(e.target.value));
                     }}
                     className={`block w-full h-12 pl-11 pr-12 rounded-xl border bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-offset-0 transition-all duration-200 text-sm ${passwordError
                         ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'

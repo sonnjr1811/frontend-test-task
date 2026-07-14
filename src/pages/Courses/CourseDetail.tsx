@@ -1,116 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { Course, Lesson } from '../../types/course';
+import type { Course } from '../../types/course';
+import { fetchCourseById } from '../../services/courseService';
+import { useTheme } from '../../hooks/useTheme';
+import { Header } from '../../components/Header';
+import { ProgressBar } from '../../components/ProgressBar';
+import { LessonItem } from '../../components/LessonItem';
 import { 
-  ArrowLeft, Clock, PlayCircle, BookOpen, CheckCircle2, 
-  Circle, ChevronRight, Award, Sun, Moon, Sparkles, Star
+  ArrowLeft, Clock, BookOpen, Award, Sparkles, Star, Sun, Moon
 } from 'lucide-react';
 
 export const CourseDetail: React.FC = () => {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const [darkMode, setDarkMode] = useTheme();
 
   // State quản lý thông tin khóa học
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State quản lý chế độ Dark Mode
-  const [darkMode, setDarkMode] = useState(() => {
-    return document.documentElement.classList.contains('dark') || 
-      localStorage.getItem('theme') === 'dark';
-  });
-
+  // Fetch thông tin khóa học
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [darkMode]);
-
-  // Fetch thông tin khóa học và ánh xạ tương tự Courses
-  useEffect(() => {
-    const fetchCourseDetail = async () => {
+    const fetchDetail = async () => {
       if (!courseId) return;
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`https://dummyjson.com/recipes/${courseId}`);
-        if (!res.ok) throw new Error('Không thể kết nối API để tải thông tin khóa học.');
-        const data = await res.json();
-
-        // 1. Ánh xạ kindOfCourse từ cuisine
-        let kindOfCourse: Course['kindOfCourse'] = 'VSTEP';
-        const cuisine = data.cuisine || '';
-        if (['Italian', 'French', 'Greek'].includes(cuisine)) {
-          kindOfCourse = 'IELTS';
-        } else if (['Asian', 'Japanese', 'Thai', 'Pakistani', 'Indian'].includes(cuisine)) {
-          kindOfCourse = 'TOEIC';
-        } else if (['Mexican', 'Moroccan', 'American'].includes(cuisine)) {
-          kindOfCourse = '4SKILLS';
-        }
-
-        // 2. Ánh xạ level từ difficulty
-        let level: Course['level'] = 'MTC';
-        if (data.difficulty === 'Easy') {
-          level = 'S';
-        } else if (data.difficulty === 'Medium') {
-          level = 'Pres';
-        } else if (data.difficulty === 'Hard') {
-          level = 'TC';
-        }
-
-        // 3. Đọc map trạng thái chi tiết của từng bài học con từ localStorage
-        const rawInstructions = data.instructions || [];
-        const totalLessons = rawInstructions.length;
-        const savedLessonsStatus = JSON.parse(
-          localStorage.getItem(`lessons_status_${courseId}`) || '{}'
-        );
-
-        const lessons: Lesson[] = rawInstructions.map((inst: string, idx: number): Lesson => {
-          const lessonId = `${data.id}_${idx}`;
-          const status = (savedLessonsStatus[lessonId] || 'not-started') as Lesson['status'];
-          const duration = Math.max(5, Math.round((data.prepTimeMinutes || 30) / totalLessons) + (idx % 3) * 2);
-
-          return {
-            id: lessonId,
-            courseId: String(data.id),
-            title: `Bài học ${idx + 1}: ${inst.split(',')[0]}`,
-            duration,
-            url: `https://example.com/lesson-${idx + 1}`,
-            description: inst,
-            status,
-            order: idx + 1
-          };
-        });
-
-        // Tính toán lại tiến trình %
-        const completedCount = lessons.filter(l => l.status === 'completed').length;
-        const progress = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
-        localStorage.setItem(`course_progress_${courseId}`, String(progress));
-
-        let status: Course['status'] = 'not-started';
-        if (progress === 100) {
-          status = 'completed';
-        } else if (progress > 0) {
-          status = 'in-progress';
-        }
-
-        setCourse({
-          id: String(data.id),
-          title: `Khóa học: ${data.name}`,
-          description: rawInstructions.join(' '),
-          thumbnail: data.image,
-          level,
-          kindOfCourse,
-          totalLessons,
-          progress,
-          status,
-          lessons
-        });
+        const data = await fetchCourseById(courseId);
+        // Lưu tiến trình vào localStorage
+        localStorage.setItem(`course_progress_${courseId}`, String(data.progress));
+        setCourse(data);
       } catch (err: any) {
         setError(err.message || 'Đã xảy ra lỗi khi tải thông tin khóa học.');
       } finally {
@@ -118,20 +38,22 @@ export const CourseDetail: React.FC = () => {
       }
     };
 
-    fetchCourseDetail();
+    fetchDetail();
   }, [courseId]);
+
+  // Lấy thông tin user đăng nhập
+  const userInfo = JSON.parse(localStorage.getItem('user_info') || '{"name": "Học viên", "email": "hocvien@example.com"}');
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors duration-300 font-sans pb-12">
         {/* HEADER BAR SKELETON */}
-        <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-8 transition-colors duration-300">
-          <div className="flex items-center space-x-4">
-            <div className="w-11 h-11 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
-            <div className="h-5 w-32 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
-          </div>
-          <div className="w-11 h-11 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
-        </header>
+        <Header 
+          title="Đang tải..."
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          userInfo={userInfo}
+        />
 
         {/* MAIN SKELETON CONTAINER */}
         <main className="max-w-5xl mx-auto p-4 sm:p-8 space-y-8">
@@ -210,6 +132,31 @@ export const CourseDetail: React.FC = () => {
     navigate(`/courses/${course.id}/lessons/${targetLessonIndex}`);
   };
 
+  // Xác định badge trạng thái khóa học
+  const getStatusBadge = () => {
+    switch (course.status) {
+      case 'completed':
+        return (
+          <span className="px-2.5 py-1 bg-emerald-600/90 text-white rounded-lg text-xs font-bold tracking-wide uppercase shadow-sm">
+            Đã hoàn thành
+          </span>
+        );
+      case 'in-progress':
+        return (
+          <span className="px-2.5 py-1 bg-sky-600/90 text-white rounded-lg text-xs font-bold tracking-wide uppercase shadow-sm">
+            Đang học
+          </span>
+        );
+      case 'not-started':
+      default:
+        return (
+          <span className="px-2.5 py-1 bg-slate-600/90 text-white rounded-lg text-xs font-bold tracking-wide uppercase shadow-sm">
+            Chưa học
+          </span>
+        );
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white transition-colors duration-300 font-sans pb-12">
       
@@ -218,7 +165,7 @@ export const CourseDetail: React.FC = () => {
         <div className="flex items-center space-x-4">
           <button 
             onClick={() => navigate('/courses')}
-            className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 cursor-pointer"
+            className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-55 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 cursor-pointer"
             aria-label="Back"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -249,15 +196,15 @@ export const CourseDetail: React.FC = () => {
               alt={course.title}
               className="w-full h-full object-cover"
             />
-            <span className="absolute top-4 left-4 px-2.5 py-1 bg-indigo-650/90 dark:bg-indigo-600/90 text-white rounded-lg text-xs font-bold tracking-wide uppercase shadow-sm">
+            <span className="absolute top-4 left-4 px-2.5 py-1 bg-indigo-600/90 dark:bg-indigo-600/90 text-white rounded-lg text-xs font-bold tracking-wide uppercase shadow-sm">
               {course.kindOfCourse} Course
             </span>
           </div>
 
           {/* Details right side */}
-          <div className="p-6 sm:p-8 flex flex-col justify-between space-y-6">
+          <div className="p-6 sm:p-8 flex flex-col justify-between space-y-6 flex-1">
             <div className="space-y-3.5">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-2">
                 <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm ${
                   course.level === 'S' 
                     ? 'bg-emerald-600/90' 
@@ -267,6 +214,8 @@ export const CourseDetail: React.FC = () => {
                 }`}>
                   Level: {course.level}
                 </span>
+                {/* [BONUS] Course Status Badge */}
+                {getStatusBadge()}
                 <span className="flex items-center space-x-1 text-amber-500 text-xs font-bold">
                   <Star className="w-4 h-4 fill-current" />
                   <span>5.0 (Đánh giá)</span>
@@ -291,25 +240,14 @@ export const CourseDetail: React.FC = () => {
             </div>
 
             {/* Progress bar */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-bold text-slate-655 dark:text-slate-400">
-                <span>Tiến trình hoàn thành khóa học</span>
-                <span>{progressPercentage}%</span>
-              </div>
-              <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 dark:from-indigo-600 dark:to-indigo-500 rounded-full transition-all duration-500"
-                  style={{ width: `${progressPercentage}%` }}
-                />
-              </div>
-            </div>
+            <ProgressBar progress={progressPercentage} label="Tiến trình hoàn thành khóa học" size="lg" />
 
-            {/* Main Action Button (Touch target >= 44px) */}
+            {/* Main Action Button */}
             <button
               onClick={handleStartLearning}
-              className="h-11 w-full sm:w-52 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2.5 shadow-md shadow-indigo-600/10 hover:shadow-lg hover:shadow-indigo-600/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-98 transition-all duration-150 cursor-pointer"
+              className="h-11 w-full sm:w-52 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2.5 shadow-md shadow-indigo-600/10 hover:shadow-lg hover:shadow-indigo-600/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-98 transition-all duration-150 cursor-pointer"
             >
-              <PlayCircle className="w-5 h-5 text-indigo-200" />
+              <Award className="w-5 h-5 text-indigo-200" />
               <span>
                 {course.status === 'completed' ? 'Học lại khóa học' : course.status === 'not-started' ? 'Bắt đầu khóa học' : 'Tiếp tục học ngay'}
               </span>
@@ -336,92 +274,15 @@ export const CourseDetail: React.FC = () => {
           </h3>
 
           <div className="space-y-3">
-            {course.lessons.map((lesson, idx) => {
-              const status = lesson.status;
-              
-              // Cấu hình tỷ lệ % tiến trình của từng lesson
-              let lessonProgress = 0;
-              let lessonProgressColor = 'bg-slate-200 dark:bg-slate-750';
-              if (status === 'in-progress') {
-                lessonProgress = 50;
-                lessonProgressColor = 'bg-indigo-500 animate-pulse';
-              } else if (status === 'completed') {
-                lessonProgress = 100;
-                lessonProgressColor = 'bg-emerald-500';
-              }
-
-              return (
-                <button
-                  key={lesson.id}
-                  onClick={() => navigate(`/courses/${course.id}/lessons/${idx}`)}
-                  className="w-full flex flex-col md:flex-row md:items-center justify-between p-4 bg-slate-50/50 hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-850 border border-slate-200/60 hover:border-slate-200 dark:border-slate-800/80 rounded-2xl transition-all duration-200 text-left group cursor-pointer gap-4"
-                >
-                  <div className="flex items-center space-x-4 min-w-0">
-                    {/* Index / Order circle */}
-                    <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-450 flex items-center justify-center font-bold text-sm shrink-0 group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:group-hover:bg-indigo-950/30 dark:group-hover:text-indigo-400 transition-colors">
-                      {lesson.order}
-                    </div>
-
-                    <div className="truncate space-y-1">
-                      <p className="text-xs font-semibold text-slate-450 dark:text-slate-400">BÀI HỌC CƠ BẢN</p>
-                      <h4 className="text-sm font-bold text-slate-850 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        {lesson.title.split(': ')[1] || lesson.title}
-                      </h4>
-                    </div>
-                  </div>
-
-                  {/* Actions & Status row (Touch targets >= 44px) */}
-                  <div className="flex items-center justify-between md:justify-end gap-6 shrink-0 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-850">
-                    <span className="flex items-center space-x-1.5 text-xs text-slate-550 dark:text-slate-400">
-                      <Clock className="w-4 h-4 text-slate-400" />
-                      <span>{lesson.duration} phút</span>
-                    </span>
-
-                    {/* Lesson progress & status */}
-                    <div className="flex items-center space-x-4 min-w-36 justify-end">
-                      <div className="hidden sm:block text-right">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                          status === 'completed' 
-                            ? 'text-emerald-500 dark:text-emerald-400' 
-                            : status === 'in-progress' 
-                              ? 'text-indigo-650 dark:text-indigo-400' 
-                              : 'text-slate-400'
-                        }`}>
-                          {status === 'completed' ? 'Đã học xong' : status === 'in-progress' ? 'Đang học (50%)' : 'Chưa học'}
-                        </span>
-                        
-                        {/* Progress bar mini cho từng bài học */}
-                        <div className="h-1 w-24 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-1">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-300 ${lessonProgressColor}`}
-                            style={{ width: `${lessonProgress}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Icon trạng thái */}
-                      <div>
-                        {status === 'completed' ? (
-                          <div className="w-7 h-7 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 flex items-center justify-center">
-                            <CheckCircle2 className="w-4 h-4" />
-                          </div>
-                        ) : status === 'in-progress' ? (
-                          <div className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 flex items-center justify-center">
-                            <Clock className="w-4 h-4" />
-                          </div>
-                        ) : (
-                          <div className="w-7 h-7 rounded-full border border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-700 flex items-center justify-center">
-                            <Circle className="w-3.5 h-3.5 stroke-[1.5]" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                </button>
-              );
-            })}
+            {course.lessons.map((lesson, idx) => (
+              <LessonItem 
+                key={lesson.id}
+                lesson={lesson}
+                index={idx}
+                thumbnail={course.thumbnail}
+                onNavigateLesson={(index) => navigate(`/courses/${course.id}/lessons/${index}`)}
+              />
+            ))}
           </div>
         </div>
 
@@ -437,8 +298,8 @@ export const CourseDetail: React.FC = () => {
               <p className="text-emerald-100 font-light text-xs sm:text-sm">Chứng chỉ học tập kỹ năng của bạn đã sẵn sàng được ghi nhận trên hệ thống.</p>
             </div>
             <button 
-              onClick={() => navigate('/courses')}
-              className="w-full sm:w-auto h-11 px-5 bg-white text-emerald-700 hover:bg-slate-55 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer"
+              onClick={() => navigate('/courses?showAchievements=true')}
+              className="w-full sm:w-auto h-11 px-5 bg-white text-emerald-700 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer"
             >
               Xem chứng nhận
             </button>
